@@ -3,9 +3,6 @@ Face recognition
 
 This example demonstrates the Gen2 Pipeline Builder running [face detection network](https://docs.openvinotoolkit.org/2021.3/omz_models_model_face_detection_retail_0004.html), [head posture estimation network](https://docs.openvinotoolkit.org/2021.3/omz_models_model_head_pose_estimation_adas_0001.html) and [face recognition network](https://docs.openvinotoolkit.org/2021.3/omz_models_model_face_recognition_mobilefacenet_arcface.html)
 
-## Demo
-
-[![Face recognition](https://user-images.githubusercontent.com/18037362/134054837-eed40899-7c1d-4160-aaf0-1d7c405bb7f4.gif)](https://www.youtube.com/watch?v=HNAeBwNCRek "Face recognition")
 
 ## Usage
 
