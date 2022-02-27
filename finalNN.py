@@ -29,7 +29,6 @@ args = parser.parse_args()
 
 fullFrameTracking = args.full_frame
 
-DISPLAY_FACE = False
 VIDEO_SIZE = (1072, 1072)
 # VIDEO_SIZE = (300, 300)
 
@@ -153,12 +152,13 @@ def create_pipeline():
     print("Creating Color Camera...")
     cam = pipeline.create(dai.node.ColorCamera)
     # For ImageManip rotate you need input frame of multiple of 16
-    # cam.setPreviewSize(1072, 1072)
+    # cam.setPreviewSize(1072, 1072) #########
     cam.setPreviewSize(300, 300)
     cam.setVideoSize(VIDEO_SIZE)
     cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
     cam.setInterleaved(False)
     cam.setBoardSocket(dai.CameraBoardSocket.RGB)
+    # cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.BGR)
 
     # create stereo cams
     monoLeft = pipeline.create(dai.node.MonoCamera)
@@ -178,9 +178,9 @@ def create_pipeline():
     # setting node configs
     stereo.initialConfig.setConfidenceThreshold(255)
 
-    spatialDetectionNetwork.setBlobPath(args.nnPath)
+    spatialDetectionNetwork.setBlobPath(args.nnPath) ## can just change to nnPathDefault
     spatialDetectionNetwork.setConfidenceThreshold(0.7)
-    spatialDetectionNetwork.input.setBlocking(False)
+    spatialDetectionNetwork.input.setBlocking(False) ## origianal is false
     spatialDetectionNetwork.setBoundingBoxScaleFactor(0.5)
     spatialDetectionNetwork.setDepthLowerThreshold(100)
     spatialDetectionNetwork.setDepthUpperThreshold(5000)
@@ -197,18 +197,33 @@ def create_pipeline():
 
     host_face_out = pipeline.create(dai.node.XLinkOut)
     host_face_out.setStreamName('frame')
-    cam.video.link(host_face_out.input)
-    cam.preview.link(spatialDetectionNetwork.input)  ## cam.preview may have to be cam.frame
+    cam.video.link(host_face_out.input) ## originally cam.video
+
+
+    # -------------------------
+    
+    # ImageManip that will crop the frame before sending it to the Face detection NN node
+    tracker_manip = pipeline.create(dai.node.ImageManip)
+    tracker_manip.initialConfig.setResize(300, 300)
+    tracker_manip.initialConfig.setFrameType(dai.RawImgFrame.Type.BGR888p)
+
+    tracker_manip.out.link(spatialDetectionNetwork.input)
+
+    cam.preview.link(tracker_manip.inputImage)
+
+    # ------------------------- 
+    
+    # cam.preview.link(spatialDetectionNetwork.input)
     objectTracker.passthroughTrackerFrame.link(host_face_out.input)  ###
     objectTracker.out.link(trackerOut.input)
 
-    # not entirely sure about this
+    # this is redundant will get rid of later, but look into full frame tracking before 
     if fullFrameTracking:
         # cam.setPreviewKeepAspectRatio(False)
-        cam.video.link(objectTracker.inputTrackerFrame) ##
-        objectTracker.inputTrackerFrame.setBlocking(False)
+        cam.preview.link(objectTracker.inputTrackerFrame) ## original was cam.video
+        objectTracker.inputTrackerFrame.setBlocking(False) ## original is False
         # do not block the pipeline if it's too slow on full frame
-        objectTracker.inputTrackerFrame.setQueueSize(2)
+        objectTracker.inputTrackerFrame.setQueueSize(6) ## original is 2
     else:
         spatialDetectionNetwork.passthrough.link(objectTracker.inputTrackerFrame)
 
@@ -238,6 +253,7 @@ def create_pipeline():
     # Script node will take the output from the face detection NN as an input and set ImageManipConfig
     # to the 'age_gender_manip' to crop the initial frame
     script = pipeline.create(dai.node.Script)
+    script.setProcessor(dai.ProcessorType.LEON_CSS)
 
     face_det_nn.out.link(script.inputs['face_det_in'])
     # We are only interested in timestamp, so we can sync depth frames with NN output
@@ -252,8 +268,8 @@ def create_pipeline():
     # higher number will fix this issue.
     copy_manip = pipeline.create(dai.node.ImageManip)
     cam.preview.link(copy_manip.inputImage)
-    copy_manip.setNumFramesPool(20)
-    copy_manip.setMaxOutputFrameSize(1072*1072*3)
+    copy_manip.setNumFramesPool(20) ##### original was 20
+    copy_manip.setMaxOutputFrameSize(300*300*3) #### original was 1072*1072*3
 
     copy_manip.out.link(face_det_manip.inputImage)
     copy_manip.out.link(script.inputs['preview'])
@@ -300,11 +316,6 @@ def create_pipeline():
     face_rec_nn.setBlobPath("models/face-recognition-mobilefacenet-arcface_2021.2_4shave.blob")
     face_rec_manip.out.link(face_rec_nn.input)
 
-    if DISPLAY_FACE:
-        xout_face = pipeline.createXLinkOut()
-        xout_face.setStreamName('face')
-        face_rec_manip.out.link(xout_face.input)
-
     arc_out = pipeline.create(dai.node.XLinkOut)
     arc_out.setStreamName('arc_out')
     face_rec_nn.out.link(arc_out.input)
@@ -313,22 +324,19 @@ def create_pipeline():
 
 
 with dai.Device(create_pipeline()) as device:
-    frameQ = device.getOutputQueue("frame", 4, False)
+    frameQ = device.getOutputQueue("frame", 4, False)  ## change 4 to 16
     recCfgQ = device.getOutputQueue("face_rec_cfg_out", 4, False)
     arcQ = device.getOutputQueue("arc_out", 4, False)
 
     # preview = device.getOutputQueue("frame", 4, False)  ### used to be preview
     tracklets = device.getOutputQueue("tracklets", 4, False)
 
-    if DISPLAY_FACE:
-        faceQ = device.getOutputQueue("face", 4, False)
-
     facerec = FaceRecognition(databases, args.name)
     sync = HostSync()
     text = TextHelper()
 
     frameArr = []
-    frame = None
+    frameFID = None
     results = {}
 
     startTime = time.monotonic()
@@ -344,7 +352,7 @@ with dai.Device(create_pipeline()) as device:
             # Inference time for face detection, head pose estimation and face recognition
             # takes about ~200ms, that's why we are delaying frames intentionally.
             if 6 < len(frameArr):
-                frame = frameArr.pop(0)
+                frameFID = frameArr.pop(0)
 
         cfg = recCfgQ.tryGet()
         if cfg is not None:
@@ -366,9 +374,16 @@ with dai.Device(create_pipeline()) as device:
                 'ts': time.time()
             }
 
+        if frameFID is not None:
+            for name, result in results.items():
+                if time.time() - result["ts"] < 0.15:
+                    text.drawContours(frameFID, result['points'])
+                    text.putText(frameFID, f"{name} {(100*result['conf']):.0f}%", result['coords'])
+
+            cv2.imshow("color", cv2.resize(frameFID, (800,800)))
         
 
-
+        # imgFrame = preview.get()
         imgFrame = frameQ.get() ###########
         track = tracklets.get()
 
@@ -393,26 +408,15 @@ with dai.Device(create_pipeline()) as device:
             except:
                 label = t.label
 
-            if frame is not None:
-                for name, result in results.items():
-                    if time.time() - result["ts"] < 0.15:
-                        text.drawContours(frame, result['points'])
-                        text.putText(frame, f"{name} {(100*result['conf']):.0f}%", result['coords'])
-                        cv2.putText(frame, str(label), (x1 + 10, y1 + 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                        cv2.putText(frame, f"ID: {[t.id]}", (x1 + 10, y1 + 35), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                        cv2.putText(frame, t.status.name, (x1 + 10, y1 + 50), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, cv2.FONT_HERSHEY_SIMPLEX)
+            
+            cv2.putText(frame, str(label), (x1 + 10, y1 + 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+            cv2.putText(frame, f"ID: {[t.id]}", (x1 + 10, y1 + 35), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+            cv2.putText(frame, t.status.name, (x1 + 10, y1 + 50), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, cv2.FONT_HERSHEY_SIMPLEX)
 
-                        cv2.putText(frame, f"X: {int(t.spatialCoordinates.x)} mm", (x1 + 10, y1 + 65), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                        cv2.putText(frame, f"Y: {int(t.spatialCoordinates.y)} mm", (x1 + 10, y1 + 80), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-                        cv2.putText(frame, f"Z: {int(t.spatialCoordinates.z)} mm", (x1 + 10, y1 + 95), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
-
-
-                cv2.imshow("color", cv2.resize(frame, (800,800)))
-
-            if DISPLAY_FACE and faceQ.has():
-                cv2.imshow('face', faceQ.get().getCvFrame())
-
+            cv2.putText(frame, f"X: {int(t.spatialCoordinates.x)} mm", (x1 + 10, y1 + 65), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+            cv2.putText(frame, f"Y: {int(t.spatialCoordinates.y)} mm", (x1 + 10, y1 + 80), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+            cv2.putText(frame, f"Z: {int(t.spatialCoordinates.z)} mm", (x1 + 10, y1 + 95), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
             
             # print(t)
             # print(dir(t))
@@ -420,6 +424,7 @@ with dai.Device(create_pipeline()) as device:
             # we want to publish center x and z
             center_x = x2-x1
             target = [center_x, int(t.spatialCoordinates.z)]
+            # print(target)
 
             # if __name__ == '__main__':
             #     try:
@@ -428,11 +433,12 @@ with dai.Device(create_pipeline()) as device:
             #         pass
 
         cv2.putText(frame, "NN fps: {:.2f}".format(fps), (2, frame.shape[0] - 4), cv2.FONT_HERSHEY_TRIPLEX, 0.4, color)
-
-        # cv2.imshow("tracker", frame)
-
-
+        
+        cv2.imshow("tracker", cv2.resize(frame, (800,800)))
 
 
         if cv2.waitKey(1) == ord('q'):
             break
+
+    
+
