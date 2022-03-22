@@ -139,7 +139,7 @@ def create_pipeline():
 
     host_face_out = pipeline.create(dai.node.XLinkOut)
     host_face_out.setStreamName('frame')
-    cam.video.link(host_face_out.input)
+    cam.video.link(host_face_out.input) ######### originally cam.video
 
     # ImageManip that will crop the frame before sending it to the Face detection NN node
     face_det_manip = pipeline.create(dai.node.ImageManip)
@@ -257,7 +257,7 @@ with dai.Device(create_pipeline()) as device:
             frameArr.append(frameIn.getCvFrame())
             # Inference time for face detection, head pose estimation and face recognition
             # takes about ~200ms, that's why we are delaying frames intentionally.
-            if 6 < len(frameArr):
+            if 3 < len(frameArr): ### 6
                 frame = frameArr.pop(0)
 
         cfg = recCfgQ.tryGet()

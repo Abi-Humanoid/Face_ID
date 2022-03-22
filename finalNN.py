@@ -385,7 +385,7 @@ with dai.Device(create_pipeline()) as device:
                 if time.time() - result["ts"] < 0.15:
                     text.drawContours(frameFID, result['points'])
                     text.putText(frameFID, f"{name} {(100*result['conf']):.0f}%", result['coords'])
-                    print(result['coords'])
+                    # print(result['coords'])
             cv2.imshow("color", cv2.resize(frameFID, (800,800)))
             # cv2.imshow("color", frameFID)
         
