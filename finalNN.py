@@ -26,6 +26,7 @@ parser.add_argument('nnPath', nargs='?', help="Path to mobilenet detection netwo
 parser.add_argument('-ff', '--full_frame', action="store_true", help="Perform tracking on full RGB frame", default=False)
 
 args = parser.parse_args()
+print(args)
 
 fullFrameTracking = args.full_frame
 
@@ -153,8 +154,8 @@ def create_pipeline():
     cam = pipeline.create(dai.node.ColorCamera)
     cam.setFps(15) # cap it at 14/15 fps for smoothness
     # For ImageManip rotate you need input frame of multiple of 16
-    # cam.setPreviewSize(1072, 1072) #########
-    cam.setPreviewSize(300, 300)
+    cam.setPreviewSize(1072, 1072) #########
+    # cam.setPreviewSize(300, 300)
     cam.setVideoSize(VIDEO_SIZE)
     cam.setResolution(dai.ColorCameraProperties.SensorResolution.THE_1080_P)
     cam.setInterleaved(False)
@@ -274,7 +275,7 @@ def create_pipeline():
     copy_manip = pipeline.create(dai.node.ImageManip)
     cam.preview.link(copy_manip.inputImage)
     copy_manip.setNumFramesPool(20) ##### original was 20
-    copy_manip.setMaxOutputFrameSize(300*300*3) #### original was 1072*1072*3
+    copy_manip.setMaxOutputFrameSize(1072*1072*3) #### original was 1072*1072*3
 
     copy_manip.out.link(face_det_manip.inputImage)
     copy_manip.out.link(script.inputs['preview'])
@@ -363,7 +364,8 @@ with dai.Device(create_pipeline()) as device:
         if cfg is not None:
             rr = cfg.getRaw().cropConfig.cropRotatedRect
             arcIn = arcQ.get()
-            h, w = (300, 300) # originally VIDEO_SIZE but its wrong since thast is 1072, 1072
+            h, w = (300, 300) # originally VIDEO_SIZE but its wrong since that is 1072, 1072
+            # h, w = 1072, 1072;
             center = (int(rr.center.x * w), int(rr.center.y * h))
             size = (int(rr.size.width * w), int(rr.size.height * h))
             # print(center)
