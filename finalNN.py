@@ -378,6 +378,8 @@ with dai.Device(create_pipeline()) as device:
             }
 
         if frameFID is not None:
+            names = filter(lambda x: x != "UNKNOWN", results.keys())
+            print(', '.join(names))
             for name, result in results.items():
                 if time.time() - result["ts"] < 0.15:
                     text.drawContours(frameFID, result['points'])
