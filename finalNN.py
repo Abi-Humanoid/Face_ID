@@ -15,7 +15,7 @@ from pathlib import Path
 labelMap = ["background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
             "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
 
-nnPathDefault = str((Path(__file__).parent / Path('../depthAI/models/mobilenet-ssd_openvino_2021.2_6shave.blob')).resolve().absolute())
+nnPathDefault = str((Path(__file__).parent / Path('../facial_recognition/models/mobilenet-ssd_openvino_2021.2_6shave.blob')).resolve().absolute())
 
 # parsing arguments
 # F_ID
@@ -27,6 +27,14 @@ args = parser.parse_args()
 VIDEO_SIZE = (1072, 1072)
 # VIDEO_SIZE = (300, 300)
 
+def transform(camX, camY, camH, camW, lcdH, lcdW):
+    yRatio = lcdH/camH
+    xRatio = lcdW/camW
+
+    targetX = camX * xRatio
+    targetY = camY * yRatio
+
+    return (targetX, targetY)
 
 databases = "databases"
 if not os.path.exists(databases):
@@ -384,7 +392,7 @@ with dai.Device(create_pipeline()) as device:
                 if time.time() - result["ts"] < 0.15:
                     text.drawContours(frameFID, result['points'])
                     text.putText(frameFID, f"{name} {(100*result['conf']):.0f}%", result['coords'])
-                    # print(result['coords'])
+                    print(result['coords'])
             # cv2.imshow("color", cv2.resize(frameFID, (800,800)))
             cv2.imshow("color", frameFID)
         
