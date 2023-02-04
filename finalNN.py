@@ -15,7 +15,8 @@ from pathlib import Path
 labelMap = ["background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow",
             "diningtable", "dog", "horse", "motorbike", "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
 
-nnPathDefault = str((Path(__file__).parent / Path('../facial_recognition/models/mobilenet-ssd_openvino_2021.2_6shave.blob')).resolve().absolute())
+# nnPathDefault = str((Path(__file__).parent / Path('../facial_recognition/models/mobilenet-ssd_openvino_2021.2_6shave.blob')).resolve().absolute())
+nnPathDefault = str((Path(__file__).parent / Path('../Face_ID/models/mobilenet-ssd_openvino_2021.2_6shave.blob')).resolve().absolute())
 
 # parsing arguments
 # F_ID
@@ -441,9 +442,13 @@ with dai.Device(create_pipeline()) as device:
             
 
             # we want to publish center x and z
-            center_x = x2-x1
+            # center_x = x2-x1
+            center_x = (x2+x1)/2
             target = [center_x, int(t.spatialCoordinates.z)]
             # print(target)
+
+            # publish the angle using ROS
+            # angle = lerp(center_x, 0, 300, -49, 49)
 
             # if __name__ == '__main__':
             #     try:
@@ -461,4 +466,11 @@ with dai.Device(create_pipeline()) as device:
             break
 
     
+# camera range : [0, 300]
+# motor range : [-49, 49]
+# Lerp function
+def lerp(var, in_start, in_end, out_start, out_end) :
+    slope = (out_end - out_start) / (in_end - in_start)
+    out = out_start + slope * (var - in_start)
+    return out
 
